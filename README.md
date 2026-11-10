@@ -1,126 +1,116 @@
-# Chopsticks
+# RL-Based In-hand Manipulation
 
-Neuromeka Indy7과 Wuji Hand를 이용한 젓가락 조작 연구 코드.
-Isaac Lab 기반 강화학습, MuJoCo 검증, 듀얼 D435 인식, 실물 정책 배포 구성.
+Indy7·Wuji Hand 플랫폼의 젓가락 조작을 위한 강화학습 프로젝트입니다. Isaac Lab에서 Wuji Hand의 20관절 잔차 정책을 학습하고, 관측·액션 인터페이스를 ONNX·MuJoCo·실물 손 실행기에서 공유하도록 구성했습니다.
+
+**Python · PyTorch · PPO / RSL-RL · Isaac Lab · MuJoCo · ONNX · Intel RealSense D435**
+
+[주요 기능](#주요-기능) · [시스템 구성](#시스템-구성) · [코드 구조](#코드-구조) · [실행 방법](#실행-방법)
+
+## 주요 기능
+
+- **단계별 태스크**: 기능적 파지 자세 형성, 젓가락 개폐, 물체 집기 등 태스크별 환경·보상 구성
+- **잔차 정책**: 현재 관절각에 정책 출력을 관절별 스케일로 더하는 20D 위치 명령
+- **실기 관측 구성**: 관절·젓가락 pose 히스토리, 손끝 위치, 직전 액션, OPEN/CLOSE 모드로 105D 입력 조립
+- **공통 정책 인터페이스**: 관절 순서·정규화·액션 clip·명령 범위를 학습·추론 코드에서 명시
+- **시뮬레이션·배포**: PPO 학습·play, ONNX 추론, MuJoCo·실물 손 백엔드
+- **비전·튜닝**: 듀얼 D435의 젓가락 pose 추적, 관절 PD 조정, 정책·관절 명령 기록 도구
 
 ## 시스템 구성
 
-```text
-+----------------------+      +----------------------+      +----------------------+
-| Isaac Lab 학습       |      | 정책 내보내기        |      | 배포 실행             |
-| RSL-RL PPO           +----->| checkpoint / ONNX    +----->| MuJoCo / Wuji Hand    |
-| hand_real 계열 task  |      | 입출력 계약 고정     |      | 공통 PolicyRunner     |
-+----------------------+      +----------------------+      +----------+-----------+
-                                                                     |
-                                   +---------------------------------+----------------+
-                                   |                                                  |
-                                   v                                                  v
-                        +----------+-----------+                           +----------+-----------+
-                        | 듀얼 D435 비전      |                           | 실물 손 backend     |
-                        | Stick1/2 pose 추정  |                           | encoder·SDK·명령    |
-                        +----------+-----------+                           +----------+-----------+
-                                   |                                                  ^
-                                   v                                                  |
-                        +----------+-----------+      20D 잔차 액션         +----------+-----------+
-                        | 105D 관측 조립      +-------------------------->| clip·scale·clamp   |
-                        +----------------------+                           +----------------------+
+```mermaid
+flowchart TD
+    Train["Isaac Lab · PPO 학습"] --> Model["ONNX 정책"]
+    Joint["관절 상태 · 손끝 FK"] --> Obs["105D 관측 조립"]
+    Vision["듀얼 D435 · 젓가락 pose"] --> Obs
+    Obs --> Model
+    Model --> Action["20D 잔차 · clip · clamp"]
+    Action --> Sim["MuJoCo 백엔드"]
+    Action --> Hand["Wuji Hand 백엔드"]
+    Sim --> Joint
+    Hand --> Joint
 ```
 
-## 주요 구성
+배포형 `hand_real`·`hand_final` 정책은 아래 관측 구성을 사용합니다. 태스크·체크포인트가 다른 101D·103D 정책은 별도 어댑터 경로를 사용합니다.
 
-| 경로 | 용도 |
-|---|---|
-| `nrmk_isaaclab_wuji/` | Isaac Lab 환경, task, reward, PPO 학습 코드 |
-| `Deploy/` | MuJoCo·실물 정책 실행, ONNX adapter, 듀얼 카메라 인식 |
-| `pd_auto_tuner/` | Wuji Hand 관절별 PD 자동 조정 |
-| `pd_tuner/` | 수동 PD 조정 도구 |
-| `활동기록/` | 날짜별 실험 조건, 결과, 판단 기록 |
-| `wuji_test/` | Wuji Hand 기능·통신 확인 코드 |
+| 입력 | 차원 |
+|---|---:|
+| 이전·현재 관절 위치 | 40 |
+| 현재 손끝 위치 | 15 |
+| 젓가락 2개의 이전·현재 pose | 28 |
+| 직전 적용 액션 | 20 |
+| OPEN/CLOSE 모드 | 2 |
+| **합계** | **105** |
 
-## 학습·배포 흐름
+출력은 20개 손 관절의 잔차 액션입니다. 정책은 30 Hz, 실물 위치 명령은 90 Hz 기준으로 구성되어 있습니다. 관절별 스케일과 좌표·쿼터니언 규약은 [공통 계약](Deploy/common/policy_contract.py)에서 확인할 수 있습니다.
 
-```text
-Task 설정
-  -> Isaac Lab 병렬 학습
-  -> best checkpoint 선정
-  -> policy.onnx 내보내기
-  -> read-only 관측·액션 확인
-  -> MuJoCo 확인
-  -> 짧은 실물 실행
-  -> 장시간 실물 실행
-```
+## 코드 구조
 
-## 정책 계약
+| 경로 | 내용 | 먼저 볼 코드·문서 |
+|---|---|---|
+| [nrmk_isaaclab_wuji](nrmk_isaaclab_wuji/) | Isaac Lab 확장 패키지·로봇 자산·학습 환경 | [설치 안내](nrmk_isaaclab_wuji/README.md) |
+| [hand_grasp 태스크](nrmk_isaaclab_wuji/isaac_neuromeka/tasks/manipulation/hand_grasp/) | 젓가락 파지·자세 형성·개폐·물체 집기 | [태스크 등록](nrmk_isaaclab_wuji/isaac_neuromeka/tasks/manipulation/hand_grasp/__init__.py) |
+| [학습·평가 스크립트](nrmk_isaaclab_wuji/scripts/rsl_rl/) | PPO train·play·정책 export | [train.py](nrmk_isaaclab_wuji/scripts/rsl_rl/train.py), [play.py](nrmk_isaaclab_wuji/scripts/rsl_rl/play.py) |
+| [Deploy/common](Deploy/common/) | 관절·관측·액션·타이밍 공통 계약 | [policy_contract.py](Deploy/common/policy_contract.py) |
+| [Deploy/policy](Deploy/policy/) | 관측 조립·ONNX 추론·액션 변환 | [policy_runner.py](Deploy/policy/policy_runner.py), [action_adapter.py](Deploy/policy/action_adapter.py) |
+| [Deploy/backends](Deploy/backends/) | MuJoCo·실물 손 인터페이스 | [소스](Deploy/backends/) |
+| [Deploy/vision](Deploy/vision/) | 듀얼 D435·마커 기반 젓가락 추적 | [README](Deploy/vision/README.md) |
+| [Deploy/run](Deploy/run/) | 정책 실행·관절 replay | [run_mujoco_policy.py](Deploy/run/run_mujoco_policy.py) |
+| [Deploy/models](Deploy/models/) | 배포용 ONNX 모델과 버전 기록 | [모델 목록](Deploy/models/README.md) |
+| [pd_auto_tuner](pd_auto_tuner/), [pd_tuner](pd_tuner/) | 관절 PD 자동·수동 조정 | 각 디렉토리 README |
+| [examples](examples/) | 장비 없이 실행하는 정책 인터페이스 예제 | [policy_contract_demo.py](examples/policy_contract_demo.py) |
 
-- 실물 주력 actor 관측: `105D` 사용.
-- 정책 출력: `20D` 관절 잔차 액션 사용.
-- Stick pose: palm-frame `xyz+wxyz` 사용.
-- Quaternion: canonical `wxyz` 사용.
-- 정책 추론: `30 Hz` 사용.
-- 실물 관절 명령: `90 Hz` 사용.
-- Joint1/2 residual: `0.10 rad` 사용.
-- Joint3 residual: `0.20 rad` 사용.
-- Joint4 residual: `0.15 rad` 사용.
-- 101D·103D checkpoint: 전용 adapter 확인 후 사용.
+## 실행 방법
 
-## 빠른 시작
+### 1. 장비 없이 관측·액션 인터페이스 확인
 
-학습 환경 이동.
+Python 3.10 이상과 NumPy만 사용합니다. 실제 공통 계약과 액션 어댑터를 불러 관측 차원과 잔차 명령 변환을 확인합니다.
 
 ```bash
-cd ~/Chopsticks/nrmk_isaaclab_wuji
-conda activate env_isaaclab
+git clone https://github.com/YunBeeeen/wuji_indy_lab_51.git
+cd wuji_indy_lab_51
+python3 -m pip install numpy
+python3 examples/policy_contract_demo.py
 ```
 
-예시 학습 실행.
+`observation_dim: 105`, `action_dim: 20`과 관측 항목별 크기를 출력합니다. 로봇 연결이나 정책 추론 없이 실행합니다.
+
+### 2. Isaac Lab 학습·play
+
+Isaac Sim 5.1·Isaac Lab 2.3 계열 환경에서 [확장 패키지 설치 안내](nrmk_isaaclab_wuji/README.md)에 따라 의존성과 로봇 자산을 준비합니다. 자산이 Git LFS로 관리되는 checkout은 `git lfs pull`도 실행합니다.
 
 ```bash
+cd nrmk_isaaclab_wuji
+python -m pip install -e .
 python scripts/rsl_rl/train.py \
-  --task hand_real \
-  --headless \
-  --num_envs 4096 \
-  --max_iterations 50000
+  --task hand_real --headless --num_envs 4096 --max_iterations 50000
 ```
 
-실물·MuJoCo 실행 명령은 [`Deploy/CLI.md`](Deploy/CLI.md) 사용.
-학습·play·TensorBoard 명령은 [`CLI.md`](CLI.md) 사용.
+학습한 105D run을 지정해 개폐 정책을 확인합니다. `<RUN>`은 `logs/rsl_rl/hand_real/` 아래에서 확인한 실제 폴더명으로 바꿉니다.
 
-## 모델 보관
+```bash
+python scripts/rsl_rl/play.py \
+  --task hand_real --num_envs 1 --load_run <RUN>
+```
 
-- `policy.onnx`: 실물·MuJoCo 추론용 사용.
-- `model_best.pt`: Isaac Sim play, 재학습, ONNX 재생성용 사용.
-- `params/env.yaml`: 환경·보상·reset 조건 재현용 보관.
-- `params/agent.yaml`: PPO 설정 재현용 보관.
-- 최신 iteration보다 실제 성능이 좋은 best checkpoint 우선 보관.
-- 전체 중간 checkpoint와 TensorBoard event는 Git 제외.
+다른 태스크와 checkpoint·환경 인자는 [학습 CLI](CLI.md)를 참고하세요.
 
-## 로그 관리
+### 3. MuJoCo에서 ONNX 정책 실행
 
-- `nrmk_isaaclab_wuji/logs/` 하위 task 폴더 구조만 Git 추적.
-- 빈 디렉터리 유지용 `.gitkeep` 사용.
-- checkpoint, event, CSV, 영상은 기본 제외.
-- 공유가 필요한 best PT·ONNX만 별도 선별 추가.
+저장소 루트에서 실행합니다. `Deploy/assets/`의 로봇 XML·메시와 해당 모델의 관측·액션 규약을 준비합니다.
 
-## 안전 원칙
+```bash
+python3 -m pip install numpy mujoco onnxruntime
+python3 -m Deploy.run.run_mujoco_policy \
+  --policy Deploy/models/hand_real_2026-08-18_23-57-25_model4500.onnx \
+  --mode close --seconds 3 --viewer --realtime
+```
 
-- 실물 최초 실행 시 `--read-only` 확인.
-- 관절 순서, joint limit, action scale 일치 확인.
-- 비전 STALE/LOST 발생 시 safe stop 사용.
-- 전류·온도·관절 오차 확인 후 실행 시간 확대.
-- observation, reward, reset, actuator 변경 시 checkpoint 호환성 재검토.
+실물 실행은 제조사 SDK, 장치별 관절 한계, 카메라 serial·calibration을 준비하고 [배포 CLI](Deploy/CLI.md)의 read-only 확인 절차부터 사용합니다.
 
-## 문서
+## 관련 문서
 
-- 배포 구조: [`Deploy/README.md`](Deploy/README.md)
-- 배포 명령: [`Deploy/CLI.md`](Deploy/CLI.md)
-- 전체 CLI: [`CLI.md`](CLI.md)
-- Hand task 구조: [`nrmk_isaaclab_wuji/isaac_neuromeka/tasks/manipulation/hand_grasp/README.md`](nrmk_isaaclab_wuji/isaac_neuromeka/tasks/manipulation/hand_grasp/README.md)
-- PD 자동 조정: [`pd_auto_tuner/README.md`](pd_auto_tuner/README.md)
-- 활동 기록 인덱스: [`활동기록/README.md`](활동기록/README.md)
-- 중간 리뷰: [`활동기록/MIDTERM_REVIEW_2026-07-20.md`](활동기록/MIDTERM_REVIEW_2026-07-20.md)
-- 최종 리뷰: [`활동기록/FINAL_REVIEW_2026-08-28.md`](활동기록/FINAL_REVIEW_2026-08-28.md)
-
-## 주의
-
-연구용 코드. 실물 장비 설정, 카메라 calibration, firmware, joint limit에 따라 결과가 달라짐.
-배포 전 해당 checkpoint의 observation/action 계약과 학습 당시 `params` 확인.
+- [배포 패키지·105D/20D 인터페이스](Deploy/README.md)
+- [학습·배포 세부 계약](Deploy/common/ISAAC_POLICY_CONTRACT.md)
+- [모델 버전](Deploy/models/README.md)
+- [개발 기록 보관 위치](docs/ARCHIVE.md)
+- [기반 확장 패키지의 원본 저작자·출처](nrmk_isaaclab_wuji/README.md#credits)

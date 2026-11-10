@@ -130,7 +130,7 @@ class MujocoScheduler:
                 # Every substep, not once per policy step: a 10 g stick falls
                 # 0.13 mm in one substep but 8.5 mm in a policy step, and the
                 # contact impulse from re-teleporting it that far is exactly the
-                # PhysX-explosion pattern CLAUDE.md warns about.  Re-applying
+                # instability pattern observed during validation.  Re-applying
                 # the SAME pose each substep keeps penetration at its reset
                 # value instead of accumulating.
                 self.backend.set_stick_poses_in_palm(pin_sticks)
