@@ -6,6 +6,22 @@ Indy7·Wuji Hand 플랫폼의 젓가락 조작을 위한 강화학습 프로젝�
 
 [주요 기능](#주요-기능) · [시스템 구성](#시스템-구성) · [코드 구조](#코드-구조) · [실행 방법](#실행-방법)
 
+## 사진 및 데모
+
+![Indy7·Wuji Hand 젓가락 조작 실험 플랫폼](docs/media/platform.png)
+
+| 시뮬레이션 OPEN/CLOSE | Wuji Hand 실물 적용 시험 |
+|---|---|
+| [![시뮬레이션 개폐 미리보기](docs/media/sim-preview.gif)](docs/media/sim-open-close.mp4) | [![실물 개폐 미리보기](docs/media/real-preview.gif)](docs/media/real-open-close.mp4) |
+| [전체 영상 보기](docs/media/sim-open-close.mp4) | [전체 영상 보기](docs/media/real-open-close.mp4) |
+
+GIF는 제공 영상의 짧은 발췌본이며, 각 링크에서 전체 길이의 영상을 확인할 수 있습니다.
+
+![Isaac Lab 젓가락 조작 학습 환경](docs/media/simulation.png)
+
+**검증 범위:** 시뮬레이션의 파지·자세 정렬·개폐 학습 실험과 실제 손의 개폐 정책 적용 시험입니다. 전체 커리큘럼의 실물 통합 및 Indy7 Arm 추종 제어 결합은 완료하지 않았습니다.
+
+
 ## 주요 기능
 
 - **단계별 태스크**: 기능적 파지 자세 형성, 젓가락 개폐, 물체 집기 등 태스크별 환경·보상 구성
@@ -66,8 +82,8 @@ flowchart TD
 Python 3.10 이상과 NumPy만 사용합니다. 실제 공통 계약과 액션 어댑터를 불러 관측 차원과 잔차 명령 변환을 확인합니다.
 
 ```bash
-git clone https://github.com/YunBeeeen/wuji_indy_lab_51.git
-cd wuji_indy_lab_51
+git clone https://github.com/YunBeeeen/Chopstick_Manipulation.git
+cd Chopstick_Manipulation
 python3 -m pip install numpy
 python3 examples/policy_contract_demo.py
 ```
