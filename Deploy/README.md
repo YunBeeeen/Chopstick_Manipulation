@@ -111,7 +111,7 @@ SIDE D435 ──┘
 - 검증 결과: [VALIDATION_REPORT.md](VALIDATION_REPORT.md).
 - 학습·배포 계약 기록: [common/ISAAC_POLICY_CONTRACT.md](common/ISAAC_POLICY_CONTRACT.md).
 - 비전 상세 기록: [vision/vision.md](vision/vision.md).
-- 기존 영문 README: [BACKUP/README_before_korean_2026-08-27.md](BACKUP/README_before_korean_2026-08-27.md).
+- 이전 문서·개발 기록: [보관 위치](../docs/ARCHIVE.md).
 
 ## 변경 시 확인
 

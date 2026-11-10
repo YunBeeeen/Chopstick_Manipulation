@@ -38,3 +38,9 @@ tatus --short
 /backups/
 /outputs/
 /nrmk_isaaclab_wuji/backups/
+
+# Local planning notes and generated experiment outputs
+**/CLAUDE.md
+**/worklog.md
+**/__pycache__/
+*.py[cod]
